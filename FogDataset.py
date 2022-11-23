@@ -63,9 +63,9 @@ class FogDataset(Dataset):
         # 008 contains data for 2 experiments with different swaps required for each
         if (experiment_id == '008'):
             if (file_path.__contains__("OFF_1")):
-                result = result + '-1'
+                experiment_id = experiment_id + '-1'
             else:
-                result = result + '-2'
+                experiment_id = experiment_id + '-2'
 
         # Swap columns according to predefined required swaps for each experiment (from word doc)
         swap_rule = swap_rules[experiment_id]
@@ -83,8 +83,9 @@ class FogDataset(Dataset):
 
 
 if __name__ == '__main__':
-    dataset = FogDataset('./data')
+    dataset = FogDataset('./data2')
     loader = DataLoader(dataset, batch_size=1, shuffle=False)
-    x, y = next(iter(loader))
-    torch.index_select(x, 1, torch.LongTensor([0,2,1]))
-    print(x)
+    for batch_idx, (inputs, targets) in enumerate(loader):
+        print(inputs)
+    # x, y = next(iter(loader))
+    # print(x)
