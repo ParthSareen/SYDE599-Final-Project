@@ -84,11 +84,6 @@ class FogDatasetLoader(Dataset):
     def swap_columns(input_values, col_index1, col_index2):
         input_values[:, [col_index2, col_index1]] = input_values[:, [col_index1, col_index2]]
 
-        # For dataframe column manipulation, does not seem to be reflected in .values output
-        # col_list = list(df.columns)
-        # col_list[col_index2], col_list[col_index1] = col_list[col_index1], col_list[col_index2]
-        # df = df[col_list]
-
 
 if __name__ == '__main__':
     dataset = FogDatasetLoader('data')
@@ -97,5 +92,3 @@ if __name__ == '__main__':
     for batch_idx, (inputs, targets) in enumerate(loader):
         print(inputs)
         print(targets)
-    # x, y = next(iter(loader))
-    # print(x)
