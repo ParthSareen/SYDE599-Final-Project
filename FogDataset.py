@@ -7,20 +7,21 @@ import re
 
 # Indices refer to EMG columns after removal of EEG data
 swap_rules = {
-    "001": [(0,1)],
-    "002": [(0,1)],
+    "001": [(0, 1)],
+    "002": [(0, 1)],
     "003": [],
     "004": [],
     "005": [],
-    "006": [(0,1)],
-    "007": [(0,1)],
-    "008-1": [(0,1)],
-    "008-2": [(1,4),(0,1)],
-    "009": [(3,4)],
+    "006": [(0, 1)],
+    "007": [(0, 1)],
+    "008-1": [(0, 1)],
+    "008-2": [(1, 4), (0, 1)],
+    "009": [(3, 4)],
     "010": [],
     "011": [],
     "012": [],
 }
+
 
 class FogDataset(Dataset):
     def __init__(self, rootdir='./data') -> None:
@@ -79,7 +80,6 @@ class FogDataset(Dataset):
         # col_list = list(df.columns)
         # col_list[col_index2], col_list[col_index1] = col_list[col_index1], col_list[col_index2]
         # df = df[col_list]
-
 
 
 if __name__ == '__main__':
