@@ -5,24 +5,32 @@ import os
 import pandas as pd
 import re
 
+'''
+TODO:
+    - IMU data management
+    - Sliding window to produce sequences
+    - EDA (outside of code)
+    - Fourier Transform
+'''
 # Indices refer to EMG columns after removal of EEG data
 swap_rules = {
-    "001": [(0,1)],
-    "002": [(0,1)],
+    "001": [(0, 1)],
+    "002": [(0, 1)],
     "003": [],
     "004": [],
     "005": [],
-    "006": [(0,1)],
-    "007": [(0,1)],
-    "008-1": [(0,1)],
-    "008-2": [(1,4),(0,1)],
-    "009": [(3,4)],
+    "006": [(0, 1)],
+    "007": [(0, 1)],
+    "008-1": [(0, 1)],
+    "008-2": [(1, 4), (0, 1)],
+    "009": [(3, 4)],
     "010": [],
     "011": [],
     "012": [],
 }
 
-class FogDataset(Dataset):
+
+class FogDatasetLoader(Dataset):
     def __init__(self, rootdir='./data') -> None:
         super().__init__()
         self.data_paths = []
@@ -61,8 +69,8 @@ class FogDataset(Dataset):
         experiment_id = x.group()[1:]
 
         # 008 contains data for 2 experiments with different swaps required for each
-        if (experiment_id == '008'):
-            if (file_path.__contains__("OFF_1")):
+        if experiment_id == '008':
+            if file_path.__contains__("OFF_1"):
                 experiment_id = experiment_id + '-1'
             else:
                 experiment_id = experiment_id + '-2'
@@ -72,20 +80,15 @@ class FogDataset(Dataset):
         for swap in swap_rule:
             self.swap_columns(input_values, swap[0], swap[1])
 
-    def swap_columns(self, input_values, col_index1, col_index2):
+    @staticmethod
+    def swap_columns(input_values, col_index1, col_index2):
         input_values[:, [col_index2, col_index1]] = input_values[:, [col_index1, col_index2]]
-
-        # For dataframe column manipulation, does not seem to be reflected in .values output
-        # col_list = list(df.columns)
-        # col_list[col_index2], col_list[col_index1] = col_list[col_index1], col_list[col_index2]
-        # df = df[col_list]
-
 
 
 if __name__ == '__main__':
-    dataset = FogDataset('./data2')
+    dataset = FogDatasetLoader('data')
     loader = DataLoader(dataset, batch_size=1, shuffle=False)
+    torch.set_printoptions(edgeitems=6)
     for batch_idx, (inputs, targets) in enumerate(loader):
         print(inputs)
-    # x, y = next(iter(loader))
-    # print(x)
+        print(targets)
