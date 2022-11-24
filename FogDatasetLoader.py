@@ -30,7 +30,7 @@ swap_rules = {
 }
 
 
-class FogDataset(Dataset):
+class FogDatasetLoader(Dataset):
     def __init__(self, rootdir='./data') -> None:
         super().__init__()
         self.data_paths = []
@@ -91,7 +91,7 @@ class FogDataset(Dataset):
 
 
 if __name__ == '__main__':
-    dataset = FogDataset('./data')
+    dataset = FogDatasetLoader('data')
     loader = DataLoader(dataset, batch_size=1, shuffle=False)
     torch.set_printoptions(edgeitems=6)
     for batch_idx, (inputs, targets) in enumerate(loader):
