@@ -5,6 +5,13 @@ import os
 import pandas as pd
 import re
 
+'''
+TODO:
+    - IMU data management
+    - Sliding window to produce sequences
+    - EDA (outside of code)
+    - Fourier Transform
+'''
 # Indices refer to EMG columns after removal of EEG data
 swap_rules = {
     "001": [(0, 1)],
@@ -62,8 +69,8 @@ class FogDataset(Dataset):
         experiment_id = x.group()[1:]
 
         # 008 contains data for 2 experiments with different swaps required for each
-        if (experiment_id == '008'):
-            if (file_path.__contains__("OFF_1")):
+        if experiment_id == '008':
+            if file_path.__contains__("OFF_1"):
                 experiment_id = experiment_id + '-1'
             else:
                 experiment_id = experiment_id + '-2'
@@ -73,7 +80,8 @@ class FogDataset(Dataset):
         for swap in swap_rule:
             self.swap_columns(input_values, swap[0], swap[1])
 
-    def swap_columns(self, input_values, col_index1, col_index2):
+    @staticmethod
+    def swap_columns(input_values, col_index1, col_index2):
         input_values[:, [col_index2, col_index1]] = input_values[:, [col_index1, col_index2]]
 
         # For dataframe column manipulation, does not seem to be reflected in .values output
@@ -83,9 +91,11 @@ class FogDataset(Dataset):
 
 
 if __name__ == '__main__':
-    dataset = FogDataset('./data2')
+    dataset = FogDataset('./data')
     loader = DataLoader(dataset, batch_size=1, shuffle=False)
+    torch.set_printoptions(edgeitems=6)
     for batch_idx, (inputs, targets) in enumerate(loader):
         print(inputs)
+        print(targets)
     # x, y = next(iter(loader))
     # print(x)
