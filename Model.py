@@ -15,14 +15,9 @@ class Model(nn.Module):
                  nhead: int,
                  d_feed_forward: int,
                  n_encoders: int,
-                 d_emg: int,
-                 d_ecg: int,
-                 d_imu: int,
-                 d_skin: int,
-                 num_init_conv_layers: int = 3,
-                 num_all_conv_layers: int = 2,
+                 d_input: int,
+                 num_conv_layers: int = 2,
                  kernel_size: int = 7,
-                 d_conv_layers: int = 8,
                  encoder_dropout: float = 0.5,
                  max_pool_dim: int = 4,
                  d_mlp: int = 128,
@@ -31,12 +26,7 @@ class Model(nn.Module):
         super().__init__()
         self.model_type = 'Transformer'
 
-        self.emg_conv = ConvBlock(d_emg, d_conv_layers, num_init_conv_layers, kernel_size)
-        self.ecg_conv = ConvBlock(d_ecg, d_conv_layers, num_init_conv_layers, kernel_size)
-        self.imu_conv = ConvBlock(d_imu, d_conv_layers, num_init_conv_layers, kernel_size)
-        self.skin_conv = ConvBlock(d_skin, d_conv_layers, num_init_conv_layers, kernel_size)
-
-        self.all_conv = ConvBlock(d_conv_layers * 4, d_model, num_all_conv_layers, kernel_size)
+        self.conv = ConvBlock(d_input, d_model, num_conv_layers, kernel_size)
 
         self.pos_encoder = PositionalEncoding(d_model, encoder_dropout, seq_length=seq_length)
         encoder_layers = TransformerEncoderLayer(d_model, nhead, d_feed_forward, encoder_dropout, batch_first=True)
@@ -50,30 +40,13 @@ class Model(nn.Module):
 
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self,
-                emg: Tensor,
-                ecg: Tensor,
-                imu: Tensor,
-                skin: Tensor, ) -> Tensor:
+    def forward(self, data: Tensor,) -> Tensor:
         """
-
-        :param emg: Tensor, shape [batch_size, d_emg, seq_length]
-        :param ecg: Tensor, shape [batch_size, d_ecg, seq_length]
-        :param imu: Tensor, shape [batch_size, d_imu, seq_length]
-        :param skin: Tensor, shape [batch_size, d_skin, seq_length]
+        :param data: Tensor, shape [batch_size, d_input, seq_length]
         :return: Tensor, shape [batch_size, 1]
         """
-        # run each input through a convolution block
-        emg_out = self.emg_conv(emg)  # output shape [batch_size, d_conv_layers, seq_length]
-        ecg_out = self.ecg_conv(ecg)  # output shape [batch_size, d_conv_layers, seq_length]
-        imu_out = self.imu_conv(imu)  # output shape [batch_size, d_conv_layers, seq_length]
-        skin_out = self.skin_conv(skin)  # output shape [batch_size, d_conv_layers, seq_length]
-
-        # concatanate inputs. output shape [batch_size, 4*d_conv_layers, seq_length]
-        data = torch.cat([emg_out, ecg_out, imu_out, skin_out], dim=1)
-
-        # run data through the all conv block
-        data = self.all_conv(data)  # output shape [batch_size, d_model, seq_length]
+        # run data through the conv block
+        data = self.conv(data)  # output shape [batch_size, d_model, seq_length]
 
         # swap the seq_length and d_model axes because of the expected shape for the transformer
         data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, seq_length, d_model]
@@ -152,14 +125,9 @@ def test():
     nhead = 4
     d_feed_forward = 512
     n_encoders = 3
-    d_emg = 10
-    d_ecg = 10
-    d_imu = 10
-    d_skin = 10
-    num_init_conv_layers = 3
-    num_all_conv_layers = 2
+    d_input = 33
+    num_conv_layers = 3
     kernel_size = 8
-    d_conv_layers = 32
     encoder_dropout = 0.5
     max_pool_dim = 4
     d_mlp = 128
@@ -171,14 +139,9 @@ def test():
         nhead,
         d_feed_forward,
         n_encoders,
-        d_emg,
-        d_ecg,
-        d_imu,
-        d_skin,
-        num_init_conv_layers,
-        num_all_conv_layers,
+        d_input,
+        num_conv_layers,
         kernel_size,
-        d_conv_layers,
         encoder_dropout,
         max_pool_dim,
         d_mlp,
@@ -187,12 +150,8 @@ def test():
 
     batch_size = 16
 
-    emg = torch.randn(batch_size, d_emg, seq_length)
-    ecg = torch.randn(batch_size, d_ecg, seq_length)
-    imu = torch.randn(batch_size, d_imu, seq_length)
-    skin = torch.randn(batch_size, d_skin, seq_length)
-
-    out = model(emg, ecg, imu, skin)
+    data = torch.randn(batch_size, d_input, seq_length)
+    out = model(data)
     print(out)
     print(out.shape)
 
