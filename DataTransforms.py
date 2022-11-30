@@ -21,7 +21,7 @@ class DataTransforms:
         self.file_length = len(self.input_tensor[0])
 
         self.chunky_input = None
-        self.chunky_target = None
+        self.target = None
         return self
 
     def __next__(self):
@@ -37,13 +37,11 @@ class DataTransforms:
                 raise StopIteration
 
         indices = torch.tensor([*range(self.position, self.position + self.window_size)])
-        if self.position == 32:
-            print(self.input_tensor[0])
-            print(len(self.input_tensor[0]))
+
         self.chunky_input = torch.index_select(self.input_tensor, dim=0, index=indices)
-        self.chunky_target = torch.index_select(self.target_tensor, dim=0, index=indices)
+        self.target = torch.index_select(self.target_tensor, dim=0, index=torch.tensor([self.position + self.window_size - 1])).item()
         self.position += self.step_size
-        return self.chunky_input, self.chunky_target
+        return self.chunky_input, self.target
 
 
 if __name__ == '__main__':
