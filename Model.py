@@ -36,7 +36,7 @@ class Model(nn.Module):
         self.imu_conv = ConvBlock(d_imu, d_conv_layers, num_init_conv_layers, kernel_size)
         self.skin_conv = ConvBlock(d_skin, d_conv_layers, num_init_conv_layers, kernel_size)
 
-        self.all_conv = ConvBlock(d_conv_layers*4, d_model, num_all_conv_layers, kernel_size)
+        self.all_conv = ConvBlock(d_conv_layers * 4, d_model, num_all_conv_layers, kernel_size)
 
         self.pos_encoder = PositionalEncoding(d_model, encoder_dropout, seq_length=seq_length)
         encoder_layers = TransformerEncoderLayer(d_model, nhead, d_feed_forward, encoder_dropout, batch_first=True)
@@ -45,24 +45,16 @@ class Model(nn.Module):
 
         self.max_pool = nn.MaxPool1d(max_pool_dim, stride=max_pool_dim)
 
-        mlp_input_dimensions = d_model * seq_length//max_pool_dim  # the output of max pool will be flattened to this
+        mlp_input_dimensions = d_model * seq_length // max_pool_dim  # the output of max pool will be flattened to this
         self.mlp = MLP(mlp_input_dimensions, 1, d_mlp, n_mlp_layers)
 
         self.sigmoid = nn.Sigmoid()
-
-        self.init_weights()
-
-    def init_weights(self) -> None:
-        initrange = 0.1
-        self.encoder.weight.data.uniform_(-initrange, initrange)
-        self.decoder.bias.data.zero_()
-        self.decoder.weight.data.uniform_(-initrange, initrange)
 
     def forward(self,
                 emg: Tensor,
                 ecg: Tensor,
                 imu: Tensor,
-                skin: Tensor,) -> Tensor:
+                skin: Tensor, ) -> Tensor:
         """
 
         :param emg: Tensor, shape [batch_size, d_emg, seq_length]
@@ -107,26 +99,11 @@ class Model(nn.Module):
         return self.sigmoid(data)
 
 
-    # def forward(self, src: Tensor, src_mask: Tensor) -> Tensor:
-    #     """
-    #     Args:
-    #         src: Tensor, shape [seq_len, batch_size]
-    #         src_mask: Tensor, shape [seq_len, seq_len]
-    #
-    #     Returns:
-    #         output Tensor of shape [seq_len, batch_size, ntoken]
-    #     """
-    #     src = self.encoder(src) * math.sqrt(self.d_model)
-    #     src = self.pos_encoder(src)
-    #     output = self.transformer_encoder(src, src_mask)
-    #     output = self.decoder(output)
-    #     return output
-
-
 class ConvBlock(nn.Module):
     def __init__(self, d_input: int, d_out: int, n_layers: int, kernel_size: int):
-        first_layer = nn.Conv1d(d_input, d_out, kernel_size)
-        other_layers = [nn.Conv1d(d_out, d_out, kernel_size) for _ in range(1, n_layers)]
+        super().__init__()
+        first_layer = nn.Conv1d(d_input, d_out, kernel_size, padding='same')
+        other_layers = [nn.Conv1d(d_out, d_out, kernel_size, padding='same') for _ in range(1, n_layers)]
         self.layers = [first_layer] + other_layers
 
     def forward(self, x: Tensor) -> Tensor:
@@ -138,6 +115,7 @@ class ConvBlock(nn.Module):
 
 class MLP(nn.Module):
     def __init__(self, d_input: int, d_out: int, d_hidden: int, n_layers: int):
+        super().__init__()
         self.layers = []
         self.layers.append(nn.Linear(d_input, d_hidden))
         for _ in range(2, n_layers):  # num hidden layers = num layers - 2
@@ -152,16 +130,11 @@ class MLP(nn.Module):
         return output
 
 
-def generate_square_subsequent_mask(sz: int) -> Tensor:
-    """Generates an upper-triangular matrix of -inf, with zeros on diag."""
-    return torch.triu(torch.ones(sz, sz) * float('-inf'), diagonal=1)
-
-
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, dropout: float = 0.1, seq_length: int = 5000):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
-        self.pos = nn.Parameter(torch.randn(d_model, seq_length))
+        self.pos = nn.Parameter(torch.randn(seq_length, d_model))
         self.pos.requires_grad = True
 
     def forward(self, x: Tensor) -> Tensor:
@@ -169,5 +142,60 @@ class PositionalEncoding(nn.Module):
         Args:
             x: Tensor, shape [batch_size, seq_length, d_model]
         """
-        x = x + self.pos
+        x = x + self.pos.unsqueeze(0)
         return self.dropout(x)
+
+
+def test():
+    seq_length = 512
+    d_model = 32
+    nhead = 4
+    d_feed_forward = 512
+    n_encoders = 3
+    d_emg = 10
+    d_ecg = 10
+    d_imu = 10
+    d_skin = 10
+    num_init_conv_layers = 3
+    num_all_conv_layers = 2
+    kernel_size = 8
+    d_conv_layers = 32
+    encoder_dropout = 0.5
+    max_pool_dim = 4
+    d_mlp = 128
+    n_mlp_layers = 2
+
+    model = Model(
+        seq_length,
+        d_model,
+        nhead,
+        d_feed_forward,
+        n_encoders,
+        d_emg,
+        d_ecg,
+        d_imu,
+        d_skin,
+        num_init_conv_layers,
+        num_all_conv_layers,
+        kernel_size,
+        d_conv_layers,
+        encoder_dropout,
+        max_pool_dim,
+        d_mlp,
+        n_mlp_layers,
+    )
+
+    batch_size = 16
+
+    emg = torch.randn(batch_size, d_emg, seq_length)
+    ecg = torch.randn(batch_size, d_ecg, seq_length)
+    imu = torch.randn(batch_size, d_imu, seq_length)
+    skin = torch.randn(batch_size, d_skin, seq_length)
+
+    out = model(emg, ecg, imu, skin)
+    print(out)
+    print(out.shape)
+
+
+if __name__ == "__main__":
+    test()
