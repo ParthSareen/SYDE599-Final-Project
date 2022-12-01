@@ -13,7 +13,7 @@ def main():
     sampler = optuna.samplers.TPESampler()
     study = optuna.create_study(sampler=sampler, direction='maximize')
     study.optimize(func=objective, n_trials=20)
-    optuna_trial(study) #not sure if this is correct
+    return optuna_trial(study) #not sure if this is correct
 
 def objective(trial):
     #optuna: window size, sequence length, d_model, nhead,n_encoders
@@ -96,9 +96,8 @@ def optuna_trial(study):
     print("  Params: ")
     for key, value in trial.params.items():
         print("    {}: {}".format(key, value))
-
+    return trial.params.items()
 
 # if __name__ == '__main__':
 
-#     main()
 
