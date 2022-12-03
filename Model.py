@@ -42,9 +42,12 @@ class Model(nn.Module):
 
     def forward(self, data: Tensor,) -> Tensor:
         """
-        :param data: Tensor, shape [batch_size, d_input, seq_length]
+        :param data: Tensor, shape [batch_size, seq_length, d_input]
         :return: Tensor, shape [batch_size, 1]
         """
+        # swap the seq_length and d_model axes because of the expected shape for the convolution
+        data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, d_model, seq_length]
+
         # run data through the conv block
         data = self.conv(data)  # output shape [batch_size, d_model, seq_length]
 
@@ -150,10 +153,13 @@ def test():
 
     batch_size = 16
 
-    data = torch.randn(batch_size, d_input, seq_length)
+    data = torch.randn(batch_size, seq_length, d_input)
     out = model(data)
     print(out)
     print(out.shape)
+
+    num = len(list(model.parameters(recurse=True)))
+    print(num)
 
 
 if __name__ == "__main__":
