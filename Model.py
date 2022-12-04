@@ -28,10 +28,12 @@ class Model(nn.Module):
         super().__init__()
         self.model_type = 'Transformer'
 
+        self.batch_norm = nn.BatchNorm1d(d_input)
         self.conv1 = ConvBlock(d_input, d_model, n_conv_layers_per_block, kernel_size)
+        self.conv_max_pool = nn.MaxPool1d(conv_max_pool_dim, stride=conv_max_pool_dim)
 
         # the input to the transformer will have length = transformer_seq_length
-        self.transformer_seq_length = seq_length
+        self.transformer_seq_length = seq_length // conv_max_pool_dim
 
         self.pos_encoder = PositionalEncoding(d_model, encoder_dropout, seq_length=self.transformer_seq_length)
         encoder_layers = TransformerEncoderLayer(d_model, nhead, d_feed_forward, encoder_dropout, batch_first=True)
@@ -58,22 +60,25 @@ class Model(nn.Module):
         :return: Tensor, shape [batch_size, 1]
         """
         # swap the seq_length and d_model axes because of the expected shape for the convolution
-        data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, d_model, seq_length]
+        data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, d_input, seq_length]
 
         # run data through the conv1 block
         data = self.conv1(data)  # output shape [batch_size, d_model, seq_length]
 
-        # # swap the seq_length and d_model axes because of the expected shape for the transformer
-        # data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, transformer_seq_length, d_model]
-        #
-        # # # add the positional encodings
+        # run through a max pool
+        data = self.conv_max_pool(data)  # output shape [batch_size, d_model, transformer_seq_length]
+
+        # swap the seq_length and d_model axes because of the expected shape for the transformer
+        data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, transformer_seq_length, d_model]
+
+        # # add the positional encodings
         # data = self.pos_encoder(data)  # output shape [batch_size, transformer_seq_length, d_model]
-        #
-        # # run through the transformer layers
-        # data = self.transformer_encoder(data)  # output shape [batch_size, transformer_seq_length, d_model]
-        #
-        # # swap the seq_length and d_model axes because of the expected shape for max pool
-        # data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, d_model, transformer_seq_length]
+
+        # run through the transformer layers
+        data = self.transformer_encoder(data)  # output shape [batch_size, transformer_seq_length, d_model]
+
+        # swap the seq_length and d_model axes because of the expected shape for max pool
+        data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, d_model, transformer_seq_length]
 
         # run through a max pool to reduce the dimensions
         data = self.max_pool(data)  # output shape [batch_size, d_model, transformer_seq_length//max_pool_dim]

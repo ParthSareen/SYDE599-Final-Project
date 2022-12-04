@@ -86,29 +86,43 @@ def test(model, test_loader):
 
     loss = loss / test_loader[0].shape[0]
 
-    print('Test loss: {:.6f}; True positive: {}; True negative: {}, False Positive: {}, False negative: {}\n'.format(
-        loss,
-        all_tp,
-        all_tn,
-        all_fp,
-        all_fn))
+    accuracy = (all_tp + all_tn) / (all_tp + all_tn + all_fp + all_fn)
+    if all_tp + all_fp != 0:
+        precision = all_tp / (all_tp + all_fp)
+    else:
+        precision = 0
+    if all_tp + all_fn != 0:
+        recall = all_tp / (all_tp + all_fn)
+    else:
+        recall = 0
+
+    print('Test loss: {:.6f}; True positive: {}; True negative: {}, False Positive: {}, False negative: {}, '
+          'accuracy: {}, precision: {}, recall: {}\n'.format(
+            loss,
+            all_tp,
+            all_tn,
+            all_fp,
+            all_fn,
+            accuracy,
+            precision,
+            recall))
 
     return loss
 
 
 def main():
     seq_length = 4096
-    d_model = 64
-    nhead = 4
-    d_feed_forward = 512
-    n_encoders = 4
+    d_model = 32
+    nhead = 2
+    d_feed_forward = 128
+    n_encoders = 2
     d_input = 33
     num_conv_layers = 4
-    max_pool_conv = 8
+    max_pool_conv = 64
     kernel_size = 8
     encoder_dropout = 0.5
-    max_pool_dim = 64
-    d_mlp = 128
+    max_pool_dim = 16
+    d_mlp = 64
     n_mlp_layers = 2
 
     model = Model.Model(
@@ -133,7 +147,7 @@ def main():
 
     fdl = FogDatasetLoader.FogDatasetLoader('./data/training')
     loader = DataTransforms.DataLoader(fdl, batch_size=1, shuffle=False)
-    dt = DataTransforms.DataTransforms(loader, window_size=seq_length, step_size=256)
+    dt = DataTransforms.DataTransforms(loader, window_size=seq_length, step_size=seq_length//4)
     train_loader = dt.load_into_memory(batch_size)
     train_loader = dt.normalize_data(train_loader)
     train_loader = dt.shuffle(train_loader)
@@ -141,9 +155,9 @@ def main():
     print("means", train_loader[0].mean([0, 1, 2]).numpy())
     print("std devs", train_loader[0].std([0, 1, 2]).numpy())
 
-    fdl = FogDatasetLoader.FogDatasetLoader('./data/012')
+    fdl = FogDatasetLoader.FogDatasetLoader('./data/validation')
     loader = DataTransforms.DataLoader(fdl, batch_size=1, shuffle=False)
-    dt = DataTransforms.DataTransforms(loader, window_size=seq_length, step_size=256)
+    dt = DataTransforms.DataTransforms(loader, window_size=seq_length, step_size=seq_length//4)
     validation_loader = dt.load_into_memory(batch_size)
     validation_loader = dt.normalize_data(validation_loader)
     validation_loader = dt.shuffle(validation_loader)
@@ -159,7 +173,9 @@ def main():
     #     print(batch_idx, inputs.shape, targets)
     # exit()
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-6, maximize=False)
+
+    validation_loader = train_loader
 
     epoch = 0
     best_test_loss = 69696969696969
