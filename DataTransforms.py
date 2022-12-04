@@ -67,6 +67,12 @@ class DataTransforms:
 
         return inputs, dataset[1]
 
+    def shuffle(self, dataset: tuple[torch.Tensor, torch.Tensor]) -> (torch.Tensor, torch.Tensor):
+        rand_ind = torch.randperm(dataset[0].shape[0])
+        inputs = dataset[0][rand_ind]
+        targets = dataset[1][rand_ind]
+        return inputs, targets
+
 
 if __name__ == '__main__':
     print(pathlib.PurePath('./data/001').__str__())

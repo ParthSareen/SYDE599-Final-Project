@@ -16,26 +16,34 @@ class Model(nn.Module):
                  d_feed_forward: int,
                  n_encoders: int,
                  d_input: int,
-                 num_conv_layers: int = 2,
+                 n_conv_layers_per_block: int = 2,
+                 conv_max_pool_dim: int = 4,
                  kernel_size: int = 7,
                  encoder_dropout: float = 0.5,
-                 max_pool_dim: int = 4,
+                 end_max_pool_dim: int = 4,
                  d_mlp: int = 128,
                  n_mlp_layers: int = 2,
+                 dropout: float = 0.5,
                  ):
         super().__init__()
         self.model_type = 'Transformer'
 
-        self.conv = ConvBlock(d_input, d_model, num_conv_layers, kernel_size)
+        self.conv1 = ConvBlock(d_input, d_model, n_conv_layers_per_block, kernel_size)
 
-        self.pos_encoder = PositionalEncoding(d_model, encoder_dropout, seq_length=seq_length)
+        # the input to the transformer will have length = transformer_seq_length
+        self.transformer_seq_length = seq_length
+
+        self.pos_encoder = PositionalEncoding(d_model, encoder_dropout, seq_length=self.transformer_seq_length)
         encoder_layers = TransformerEncoderLayer(d_model, nhead, d_feed_forward, encoder_dropout, batch_first=True)
         self.transformer_encoder = TransformerEncoder(encoder_layers, n_encoders)
         self.d_model = d_model
 
-        self.max_pool = nn.MaxPool1d(max_pool_dim, stride=max_pool_dim)
+        self.max_pool = nn.MaxPool1d(end_max_pool_dim, stride=end_max_pool_dim)
 
-        mlp_input_dimensions = d_model * seq_length // max_pool_dim  # the output of max pool will be flattened to this
+        self.dropout = nn.Dropout(p=0.5)
+
+        # the output of max pool will be flattened to mlp_input_dimensions
+        mlp_input_dimensions = d_model * self.transformer_seq_length // end_max_pool_dim
         self.mlp = MLP(mlp_input_dimensions, 1, d_mlp, n_mlp_layers)
 
         self.sigmoid = nn.Sigmoid()
@@ -52,26 +60,29 @@ class Model(nn.Module):
         # swap the seq_length and d_model axes because of the expected shape for the convolution
         data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, d_model, seq_length]
 
-        # run data through the conv block
-        data = self.conv(data)  # output shape [batch_size, d_model, seq_length]
+        # run data through the conv1 block
+        data = self.conv1(data)  # output shape [batch_size, d_model, seq_length]
 
-        # swap the seq_length and d_model axes because of the expected shape for the transformer
-        data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, seq_length, d_model]
-
-        # # add the positional encodings
-        data = self.pos_encoder(data)  # output shape [batch_size, seq_length, d_model]
-
-        # run through the transformer layers
-        data = self.transformer_encoder(data)  # output shape [batch_size, seq_length, d_model]
-
-        # swap the seq_length and d_model axes because of the expected shape for max pool
-        data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, d_model, seq_length]
+        # # swap the seq_length and d_model axes because of the expected shape for the transformer
+        # data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, transformer_seq_length, d_model]
+        #
+        # # # add the positional encodings
+        # data = self.pos_encoder(data)  # output shape [batch_size, transformer_seq_length, d_model]
+        #
+        # # run through the transformer layers
+        # data = self.transformer_encoder(data)  # output shape [batch_size, transformer_seq_length, d_model]
+        #
+        # # swap the seq_length and d_model axes because of the expected shape for max pool
+        # data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, d_model, transformer_seq_length]
 
         # run through a max pool to reduce the dimensions
-        data = self.max_pool(data)  # output shape [batch_size, d_model, seq_length//max_pool_dim]
+        data = self.max_pool(data)  # output shape [batch_size, d_model, transformer_seq_length//max_pool_dim]
 
         # rearrange the data to 1D to prep for the MLP
-        data = torch.flatten(data, 1, 2)  # output shape [batch_size, d_model * seq_length//max_pool_dim]
+        data = torch.flatten(data, 1, 2)  # output shape [batch_size, d_model * transformer_seq_length//max_pool_dim]
+
+        # dropout to prevent overfitting
+        data = self.dropout(data)
 
         # run through the MLP
         data = self.mlp(data)  # output shape [batch_size, 1]
@@ -88,9 +99,12 @@ class ConvBlock(nn.Module):
         self.layers = nn.ModuleList(self.layers)  # To easily store the parameters on the GPU, use a ModuleList
 
     def forward(self, x: Tensor) -> Tensor:
-        for layer in self.layers:
-            x = layer(x)
-            x = nn.ReLU()(x)
+        x = self.layers[0](x)
+        for layer in self.layers[1:]:
+            residual = x.clone()
+            x = layer(x).clone()
+            x = nn.ReLU(inplace=False)(x).clone()
+            # x += residual
         return x
 
 
@@ -136,12 +150,13 @@ class PositionalEncoding(nn.Module):
 
 def test():
     seq_length = 2048
-    d_model = 32
+    d_model = 64
     nhead = 4
     d_feed_forward = 512
-    n_encoders = 3
+    n_encoders = 4
     d_input = 33
-    num_conv_layers = 3
+    num_conv_layers_per_block = 3
+    max_pool_conv = 8
     kernel_size = 8
     encoder_dropout = 0.5
     max_pool_dim = 4
@@ -155,7 +170,8 @@ def test():
         d_feed_forward,
         n_encoders,
         d_input,
-        num_conv_layers,
+        num_conv_layers_per_block,
+        max_pool_conv,
         kernel_size,
         encoder_dropout,
         max_pool_dim,

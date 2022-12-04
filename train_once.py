@@ -77,7 +77,7 @@ def test(model, test_loader):
             loss += nn.BCELoss()(outputs, targets)
 
             cutoff = 0.5
-            predictions = torch.where(outputs > cutoff, 1, 0)
+            predictions = torch.where(outputs >= cutoff, 1, 0)
             true_positives, false_positives, true_negatives, false_negatives = confusion(predictions, targets)
             all_tp += true_positives
             all_tn += true_negatives
@@ -97,17 +97,18 @@ def test(model, test_loader):
 
 
 def main():
-    seq_length = 512
+    seq_length = 4096
     d_model = 64
     nhead = 4
     d_feed_forward = 512
     n_encoders = 4
     d_input = 33
-    num_conv_layers = 2
+    num_conv_layers = 4
+    max_pool_conv = 8
     kernel_size = 8
     encoder_dropout = 0.5
-    max_pool_dim = 4
-    d_mlp = 64
+    max_pool_dim = 64
+    d_mlp = 128
     n_mlp_layers = 2
 
     model = Model.Model(
@@ -118,6 +119,7 @@ def main():
         n_encoders,
         d_input,
         num_conv_layers,
+        max_pool_conv,
         kernel_size,
         encoder_dropout,
         max_pool_dim,
@@ -129,20 +131,22 @@ def main():
 
     batch_size = 16
 
-    fdl = FogDatasetLoader.FogDatasetLoader('./data/001')
+    fdl = FogDatasetLoader.FogDatasetLoader('./data/training')
     loader = DataTransforms.DataLoader(fdl, batch_size=1, shuffle=False)
-    dt = DataTransforms.DataTransforms(loader, window_size=seq_length, step_size=128)
+    dt = DataTransforms.DataTransforms(loader, window_size=seq_length, step_size=256)
     train_loader = dt.load_into_memory(batch_size)
     train_loader = dt.normalize_data(train_loader)
+    train_loader = dt.shuffle(train_loader)
 
     print("means", train_loader[0].mean([0, 1, 2]).numpy())
     print("std devs", train_loader[0].std([0, 1, 2]).numpy())
 
-    fdl = FogDatasetLoader.FogDatasetLoader('./data/002')
+    fdl = FogDatasetLoader.FogDatasetLoader('./data/012')
     loader = DataTransforms.DataLoader(fdl, batch_size=1, shuffle=False)
-    dt = DataTransforms.DataTransforms(loader, window_size=seq_length, step_size=128)
+    dt = DataTransforms.DataTransforms(loader, window_size=seq_length, step_size=256)
     validation_loader = dt.load_into_memory(batch_size)
     validation_loader = dt.normalize_data(validation_loader)
+    validation_loader = dt.shuffle(validation_loader)
 
     # labels = np.random.choice([0, 1], (95, 16, 1), replace=True)
     # windows = np.expand_dims(labels, axis=-1)  # shape (95, 16, 1, 1)
@@ -155,13 +159,13 @@ def main():
     #     print(batch_idx, inputs.shape, targets)
     # exit()
 
-    optimizer = optim.Adam(model.parameters(), weight_decay=2e-4)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     epoch = 0
     best_test_loss = 69696969696969
     test_losses = []
     num_non_decreasing_loss = 0
-    patience = 5
+    patience = 10
     while num_non_decreasing_loss < patience and epoch < 50:
         train(model, train_loader, optimizer, epoch)
         test_loss = test(model, validation_loader)
@@ -193,17 +197,13 @@ def main():
 
     preds = np.array(preds).reshape(-1)
     truths = np.array(truths).reshape(-1)
-    # order = np.argsort(preds)
-    #
-    # preds = preds[order]
-    # truths = truths[order]
 
     print("preds", preds)
     print("truths", truths)
 
     plt.figure()
     plt.scatter(range(len(preds)), preds, s=5)
-    # plt.scatter(range(len(truths)), truths, s=5)
+    plt.scatter(range(len(truths)), truths, s=5)
     plt.legend(["preds", "targets"])
     plt.show()
 
