@@ -40,6 +40,10 @@ class Model(nn.Module):
 
         self.sigmoid = nn.Sigmoid()
 
+    def init_weights(self):
+        init_range = 0.1
+        self.encoder.weight.data.uniform_(-init_range, init_range)
+
     def forward(self, data: Tensor,) -> Tensor:
         """
         :param data: Tensor, shape [batch_size, seq_length, d_input]
@@ -54,7 +58,7 @@ class Model(nn.Module):
         # swap the seq_length and d_model axes because of the expected shape for the transformer
         data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, seq_length, d_model]
 
-        # add the positional encodings
+        # # add the positional encodings
         data = self.pos_encoder(data)  # output shape [batch_size, seq_length, d_model]
 
         # run through the transformer layers
@@ -81,6 +85,7 @@ class ConvBlock(nn.Module):
         first_layer = nn.Conv1d(d_input, d_out, kernel_size, padding='same')
         other_layers = [nn.Conv1d(d_out, d_out, kernel_size, padding='same') for _ in range(1, n_layers)]
         self.layers = [first_layer] + other_layers
+        self.layers = nn.ModuleList(self.layers)  # To easily store the parameters on the GPU, use a ModuleList
 
     def forward(self, x: Tensor) -> Tensor:
         for layer in self.layers:
@@ -97,6 +102,13 @@ class MLP(nn.Module):
         for _ in range(2, n_layers):  # num hidden layers = num layers - 2
             self.layers.append(nn.Linear(d_hidden, d_hidden))
         self.layers.append(nn.Linear(d_hidden, d_out))
+        self.layers = nn.ModuleList(self.layers)  # To easily store the parameters on the GPU, use a ModuleList
+
+    def init_weights(self):
+        init_range = 0.1
+        for layer in self.layers:
+            layer.bias.data.zero_()
+            layer.weight.data.unifrom_(-init_range, init_range)
 
     def forward(self, x: Tensor) -> Tensor:
         for layer in self.layers[:-1]:
@@ -123,7 +135,7 @@ class PositionalEncoding(nn.Module):
 
 
 def test():
-    seq_length = 512
+    seq_length = 2048
     d_model = 32
     nhead = 4
     d_feed_forward = 512
@@ -158,8 +170,10 @@ def test():
     print(out)
     print(out.shape)
 
-    num = len(list(model.parameters(recurse=True)))
-    print(num)
+    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    n_no_train_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)
+
+    print(n_params, n_no_train_params)
 
 
 if __name__ == "__main__":

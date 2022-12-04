@@ -2,18 +2,21 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 import Model
 import FogDatasetLoader
 import DataTransforms
 
 
 def train(model, train_loader, optimizer, epoch):
-    # device = torch.device("cuda:0")
+    device = torch.device("cuda:0")
     model.train()
     total_loss = 0
     for batch_idx, inputs, targets in zip(range(train_loader[0].shape[0]), train_loader[0], train_loader[1]):
-        # inputs = inputs.to(device)
-        # targets = targets.to(device)
+        inputs = inputs.to(device)
+        targets = targets.to(device)
         optimizer.zero_grad()
         outputs = model(inputs)
         loss = nn.BCELoss()(outputs, targets)
@@ -58,7 +61,7 @@ def confusion(prediction, truth):
 
 
 def test(model, test_loader):
-    # device = torch.device("cuda:0")
+    device = torch.device("cuda:0")
 
     model.eval()
     loss = 0
@@ -68,8 +71,8 @@ def test(model, test_loader):
     all_fn = 0
     with torch.no_grad():
         for batch_idx, inputs, targets in zip(range(test_loader[0].shape[0]), test_loader[0], test_loader[1]):
-            # inputs = inputs.to(device)
-            # targets = targets.to(device)
+            inputs = inputs.to(device)
+            targets = targets.to(device)
             outputs = model(inputs)
             loss += nn.BCELoss()(outputs, targets)
 
@@ -95,16 +98,16 @@ def test(model, test_loader):
 
 def main():
     seq_length = 512
-    d_model = 32
+    d_model = 64
     nhead = 4
     d_feed_forward = 512
-    n_encoders = 3
+    n_encoders = 4
     d_input = 33
-    num_conv_layers = 3
+    num_conv_layers = 2
     kernel_size = 8
     encoder_dropout = 0.5
     max_pool_dim = 4
-    d_mlp = 128
+    d_mlp = 64
     n_mlp_layers = 2
 
     model = Model.Model(
@@ -121,15 +124,32 @@ def main():
         d_mlp,
         n_mlp_layers,
     )
-    # device = torch.device("cuda:0")
-    # model.to(device)
+    device = torch.device("cuda:0")
+    model.to(device)
 
     batch_size = 16
 
     fdl = FogDatasetLoader.FogDatasetLoader('./data/001')
     loader = DataTransforms.DataLoader(fdl, batch_size=1, shuffle=False)
-    dt = DataTransforms.DataTransforms(loader)
+    dt = DataTransforms.DataTransforms(loader, window_size=seq_length, step_size=128)
     train_loader = dt.load_into_memory(batch_size)
+    train_loader = dt.normalize_data(train_loader)
+
+    print("means", train_loader[0].mean([0, 1, 2]).numpy())
+    print("std devs", train_loader[0].std([0, 1, 2]).numpy())
+
+    fdl = FogDatasetLoader.FogDatasetLoader('./data/002')
+    loader = DataTransforms.DataLoader(fdl, batch_size=1, shuffle=False)
+    dt = DataTransforms.DataTransforms(loader, window_size=seq_length, step_size=128)
+    validation_loader = dt.load_into_memory(batch_size)
+    validation_loader = dt.normalize_data(validation_loader)
+
+    # labels = np.random.choice([0, 1], (95, 16, 1), replace=True)
+    # windows = np.expand_dims(labels, axis=-1)  # shape (95, 16, 1, 1)
+    # windows = np.repeat(windows, 512, axis=2)
+    # windows = np.repeat(windows, 33, axis=3)  # shape (95, 16, 512, 33)
+    # windows = windows.astype(np.float) + (np.random.random((95, 16, 512, 33)) - 0.5) * 10
+    # validation_loader = (torch.Tensor(windows), torch.Tensor(labels))
 
     # for batch_idx, (inputs, targets) in enumerate(dt):
     #     print(batch_idx, inputs.shape, targets)
@@ -138,19 +158,54 @@ def main():
     optimizer = optim.Adam(model.parameters(), weight_decay=2e-4)
 
     epoch = 0
-    test_loss = None
     best_test_loss = 69696969696969
+    test_losses = []
     num_non_decreasing_loss = 0
-    patience = 3
-    while num_non_decreasing_loss < patience and epoch < 2:
+    patience = 5
+    while num_non_decreasing_loss < patience and epoch < 50:
         train(model, train_loader, optimizer, epoch)
-        test_loss = test(model, train_loader)
+        test_loss = test(model, validation_loader)
+        test_losses.append(test_loss.cpu())
         if test_loss < best_test_loss:
             best_test_loss = test_loss
             num_non_decreasing_loss = 0
+            torch.save(model.state_dict(), f"saved_model")
         else:
             num_non_decreasing_loss += 1
         epoch += 1
+
+    model.load_state_dict(torch.load(f"saved_model"))
+
+    print("test_losses", test_losses)
+    plt.figure()
+    plt.scatter(range(len(test_losses)), test_losses)
+    plt.title("Test loss over epochs")
+    plt.xlabel("Epoch number")
+    plt.ylabel("Test loss")
+    plt.show()
+
+    preds = []
+    truths = []
+    for inputs, targets in zip(validation_loader[0], validation_loader[1]):
+        inputs = inputs.to(device)
+        preds.append([pred[0] for pred in model(inputs).tolist()])
+        truths.append([truth[0] for truth in targets.tolist()])
+
+    preds = np.array(preds).reshape(-1)
+    truths = np.array(truths).reshape(-1)
+    # order = np.argsort(preds)
+    #
+    # preds = preds[order]
+    # truths = truths[order]
+
+    print("preds", preds)
+    print("truths", truths)
+
+    plt.figure()
+    plt.scatter(range(len(preds)), preds, s=5)
+    # plt.scatter(range(len(truths)), truths, s=5)
+    plt.legend(["preds", "targets"])
+    plt.show()
 
 
 if __name__ == '__main__':

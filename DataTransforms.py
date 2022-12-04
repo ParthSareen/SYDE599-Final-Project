@@ -44,7 +44,7 @@ class DataTransforms:
         self.position += self.step_size
         return self.chunky_input, self.target
 
-    def load_into_memory(self, batch_size):
+    def load_into_memory(self, batch_size) -> (torch.Tensor, torch.Tensor):
         inputs = []
         targets = []
         for idx, (input_t, target_t) in enumerate(self):
@@ -58,6 +58,14 @@ class DataTransforms:
             batched_targets.append(torch.stack(targets[i*batch_size: (i+1)*batch_size]))
 
         return torch.stack(batched_inputs).type(torch.float32), torch.stack(batched_targets).type(torch.float32)
+
+    def normalize_data(self, dataset: tuple[torch.Tensor, torch.Tensor]) -> (torch.Tensor, torch.Tensor):
+        inputs = (dataset[0] - dataset[0].mean([0, 1, 2], keepdim=True))
+        std = dataset[0].std([0, 1, 2], keepdim=True)
+        std = torch.where(std > 0, std, 1)
+        inputs = inputs / std
+
+        return inputs, dataset[1]
 
 
 if __name__ == '__main__':
