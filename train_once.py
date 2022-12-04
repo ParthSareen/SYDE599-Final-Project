@@ -175,7 +175,7 @@ def main():
 
     optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-6, maximize=False)
 
-    validation_loader = train_loader
+    # validation_loader = train_loader
 
     epoch = 0
     best_test_loss = 69696969696969

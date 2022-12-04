@@ -31,6 +31,7 @@ class Model(nn.Module):
         self.batch_norm = nn.BatchNorm1d(d_input)
         self.conv1 = ConvBlock(d_input, d_model, n_conv_layers_per_block, kernel_size)
         self.conv_max_pool = nn.MaxPool1d(conv_max_pool_dim, stride=conv_max_pool_dim)
+        self.dropout1d = nn.Dropout1d(p=dropout)
 
         # the input to the transformer will have length = transformer_seq_length
         self.transformer_seq_length = seq_length // conv_max_pool_dim
@@ -42,7 +43,7 @@ class Model(nn.Module):
 
         self.max_pool = nn.MaxPool1d(end_max_pool_dim, stride=end_max_pool_dim)
 
-        self.dropout = nn.Dropout(p=0.5)
+        self.dropout = nn.Dropout(p=dropout)
 
         # the output of max pool will be flattened to mlp_input_dimensions
         mlp_input_dimensions = d_model * self.transformer_seq_length // end_max_pool_dim
@@ -61,6 +62,9 @@ class Model(nn.Module):
         """
         # swap the seq_length and d_model axes because of the expected shape for the convolution
         data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, d_input, seq_length]
+
+        # run through a batch norm layer
+        data = self.batch_norm(data)
 
         # run data through the conv1 block
         data = self.conv1(data)  # output shape [batch_size, d_model, seq_length]
