@@ -10,6 +10,7 @@ import numpy as np
 import Model
 import FogDatasetLoader
 import DataTransforms
+import cnn
 
 
 def train(model, train_loader, optimizer, epoch):
@@ -26,7 +27,7 @@ def train(model, train_loader, optimizer, epoch):
         loss.backward()
         optimizer.step()
 
-        if batch_idx % 50 == 0:
+        if batch_idx % 10 == 0:
             print('Epoch: {} {}/{} Training loss: {:.6f}'.format(
                 epoch,
                 batch_idx * len(inputs),
@@ -111,41 +112,19 @@ def test(model, test_loader):
             precision,
             recall))
 
-    return loss, accuracy
+    return loss
 
 
 def main():
     seq_length = 4096
-    d_model = 32
-    nhead = 2
-    d_feed_forward = 128
-    n_encoders = 2
     d_input = 33
-    num_conv_layers = 4
-    max_pool_conv = 64
     kernel_size = 8
-    encoder_dropout = 0.5
-    max_pool_dim = 16
-    d_mlp = 64
+    pool_size = 4
+    dropout = 0
+    d_hidden = 128
     n_mlp_layers = 2
-    dropout = 0.5
 
-    model = Model.Model(
-        seq_length,
-        d_model,
-        nhead,
-        d_feed_forward,
-        n_encoders,
-        d_input,
-        num_conv_layers,
-        max_pool_conv,
-        kernel_size,
-        encoder_dropout,
-        max_pool_dim,
-        d_mlp,
-        n_mlp_layers,
-        dropout,
-    )
+    model = cnn.Model(seq_length, d_input, kernel_size, pool_size, dropout, d_hidden, n_mlp_layers)
     device = torch.device("cuda:0")
     model.to(device)
 
@@ -157,7 +136,6 @@ def main():
     train_loader = dt.load_into_memory(batch_size)
     train_loader = dt.normalize_data(train_loader)
     train_loader = dt.shuffle(train_loader)
-    # train_loader = dt.drop_imu(train_loader)
 
     print("means", train_loader[0].mean([0, 1, 2]).numpy())
     print("std devs", train_loader[0].std([0, 1, 2]).numpy())
@@ -168,11 +146,10 @@ def main():
     validation_loader = dt.load_into_memory(batch_size)
     validation_loader = dt.normalize_data(validation_loader)
     validation_loader = dt.shuffle(validation_loader)
-    # validation_loader = dt.drop_imu(validation_loader)
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=1e-6, maximize=False)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4, maximize=False)
 
-    # validation_loader = copy.deepcopy(train_loader)
+    validation_loader = copy.deepcopy(train_loader)
 
     epoch = 0
     best_test_loss = 69696969696969
@@ -188,12 +165,12 @@ def main():
         if test_loss < best_test_loss:
             best_test_loss = test_loss
             num_non_decreasing_loss = 0
-            torch.save(model.state_dict(), f"saved_model")
+            torch.save(model.state_dict(), f"saved_model_cnn")
         else:
             num_non_decreasing_loss += 1
         epoch += 1
 
-    model.load_state_dict(torch.load(f"saved_model"))
+    model.load_state_dict(torch.load(f"saved_model_cnn"))
 
     print("test_losses", test_losses)
     plt.figure()

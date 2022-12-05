@@ -29,14 +29,13 @@ class Model(nn.Module):
         self.model_type = 'Transformer'
 
         self.batch_norm = nn.BatchNorm1d(d_input)
-        self.conv1 = ConvBlock(d_input, d_model, n_conv_layers_per_block, kernel_size)
+        self.conv1 = ConvBlock(d_input, d_model, n_conv_layers_per_block, kernel_size, dropout)
         self.conv_max_pool = nn.MaxPool1d(conv_max_pool_dim, stride=conv_max_pool_dim)
-        self.dropout1d = nn.Dropout1d(p=dropout)
 
         # the input to the transformer will have length = transformer_seq_length
         self.transformer_seq_length = seq_length // conv_max_pool_dim
 
-        self.pos_encoder = PositionalEncoding(d_model, encoder_dropout, seq_length=self.transformer_seq_length)
+        self.pos_encoder = PositionalEncoding(d_model, seq_length=self.transformer_seq_length)
         encoder_layers = TransformerEncoderLayer(d_model, nhead, d_feed_forward, encoder_dropout, batch_first=True)
         self.transformer_encoder = TransformerEncoder(encoder_layers, n_encoders)
         self.d_model = d_model
@@ -75,8 +74,8 @@ class Model(nn.Module):
         # swap the seq_length and d_model axes because of the expected shape for the transformer
         data = torch.swapaxes(data, 1, 2)  # output shape [batch_size, transformer_seq_length, d_model]
 
-        # # add the positional encodings
-        # data = self.pos_encoder(data)  # output shape [batch_size, transformer_seq_length, d_model]
+        # add the positional encodings
+        data = self.pos_encoder(data)  # output shape [batch_size, transformer_seq_length, d_model]
 
         # run through the transformer layers
         data = self.transformer_encoder(data)  # output shape [batch_size, transformer_seq_length, d_model]
@@ -100,20 +99,21 @@ class Model(nn.Module):
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, d_input: int, d_out: int, n_layers: int, kernel_size: int):
+    def __init__(self, d_input: int, d_out: int, n_layers: int, kernel_size: int, dropout=0.5):
         super().__init__()
         first_layer = nn.Conv1d(d_input, d_out, kernel_size, padding='same')
         other_layers = [nn.Conv1d(d_out, d_out, kernel_size, padding='same') for _ in range(1, n_layers)]
         self.layers = [first_layer] + other_layers
         self.layers = nn.ModuleList(self.layers)  # To easily store the parameters on the GPU, use a ModuleList
+        self.dropout = nn.Dropout1d(dropout)
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.layers[0](x)
+        x = nn.ReLU(inplace=False)(x)
         for layer in self.layers[1:]:
-            residual = x.clone()
-            x = layer(x).clone()
-            x = nn.ReLU(inplace=False)(x).clone()
-            # x += residual
+            x = layer(x)
+            x = self.dropout(x)
+            x = nn.ReLU(inplace=False)(x)
         return x
 
 
@@ -141,20 +141,48 @@ class MLP(nn.Module):
         return output
 
 
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model: int, dropout: float = 0.1, seq_length: int = 5000):
-        super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
-        self.pos = nn.Parameter(torch.randn(seq_length, d_model))
-        self.pos.requires_grad = True
+# class PositionalEncoding(nn.Module):
+#     def __init__(self, d_model: int, dropout: float = 0.1, seq_length: int = 5000):
+#         super().__init__()
+#         self.dropout = nn.Dropout(p=dropout)
+#         self.pos = nn.Parameter(torch.randn(seq_length, d_model))
+#         self.pos.requires_grad = True
+#
+#     def forward(self, x: Tensor) -> Tensor:
+#         """
+#         Args:
+#             x: Tensor, shape [batch_size, seq_length, d_model]
+#         """
+#         x = x + self.pos.unsqueeze(0)
+#         return self.dropout(x)
 
-    def forward(self, x: Tensor) -> Tensor:
+
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, d_model, seq_length=5000):
         """
-        Args:
-            x: Tensor, shape [batch_size, seq_length, d_model]
+        Inputs
+            d_model - Hidden dimensionality of the input.
+            max_len - Maximum length of a sequence to expect.
         """
-        x = x + self.pos.unsqueeze(0)
-        return self.dropout(x)
+        super().__init__()
+
+        # Create matrix of [SeqLen, HiddenDim] representing the positional encoding for max_len inputs
+        pe = torch.zeros(seq_length, d_model)
+        position = torch.arange(0, seq_length, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+
+        # register_buffer => Tensor which is not a parameter, but should be part of the modules state.
+        # Used for tensors that need to be on the same device as the module.
+        # persistent=False tells PyTorch to not add the buffer to the state dict (e.g. when we save the model)
+        self.register_buffer('pe', pe, persistent=False)
+
+    def forward(self, x):
+        x = x + self.pe[:, :x.size(1)]
+        return x
 
 
 def test():
@@ -191,14 +219,21 @@ def test():
     batch_size = 16
 
     data = torch.randn(batch_size, seq_length, d_input)
-    out = model(data)
-    print(out)
-    print(out.shape)
+    model.train()
+    torch.manual_seed(1)
+    out0 = model(data)
+    torch.manual_seed(1)
+    out1 = model(data)
 
-    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    n_no_train_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)
+    model.eval()
+    torch.manual_seed(1)
+    out2 = model(data)
+    torch.manual_seed(1)
+    out3 = model(data)
 
-    print(n_params, n_no_train_params)
+    print(torch.max(torch.abs(out1 - out0)))
+    print(torch.max(torch.abs(out2 - out1)))
+    print(torch.max(torch.abs(out3 - out2)))
 
 
 if __name__ == "__main__":

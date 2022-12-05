@@ -61,9 +61,9 @@ class DataTransforms:
 
     def normalize_data(self, dataset: tuple[torch.Tensor, torch.Tensor]) -> (torch.Tensor, torch.Tensor):
         inputs = (dataset[0] - dataset[0].mean([0, 1, 2], keepdim=True))
-        std = dataset[0].std([0, 1, 2], keepdim=True)
-        std = torch.where(std > 0, std, 1)
-        inputs = inputs / std
+        rng = inputs.amax([0, 1, 2], keepdim=True) - inputs.amin([0, 1, 2], keepdim=True)
+        rng = torch.where(rng > 0, rng, 1)
+        inputs = inputs / rng
 
         return inputs, dataset[1]
 
@@ -71,6 +71,11 @@ class DataTransforms:
         rand_ind = torch.randperm(dataset[0].shape[0])
         inputs = dataset[0][rand_ind]
         targets = dataset[1][rand_ind]
+        return inputs, targets
+
+    def drop_imu(self, dataset: tuple[torch.Tensor, torch.Tensor]) -> (torch.Tensor, torch.Tensor):
+        inputs = dataset[0][:, :, :, :5]
+        targets = dataset[1]
         return inputs, targets
 
 
