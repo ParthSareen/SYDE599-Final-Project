@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import DataLoader
+import pathlib
 
 import FogDatasetLoader
 
@@ -39,14 +40,51 @@ class DataTransforms:
         indices = torch.tensor([*range(self.position, self.position + self.window_size)])
 
         self.chunky_input = torch.index_select(self.input_tensor, dim=0, index=indices)
-        self.target = torch.index_select(self.target_tensor, dim=0, index=torch.tensor([self.position + self.window_size - 1])).item()
+        self.target = torch.index_select(self.target_tensor, dim=0, index=torch.tensor([self.position + self.window_size - 1]))
         self.position += self.step_size
         return self.chunky_input, self.target
 
+    def load_into_memory(self, batch_size) -> (torch.Tensor, torch.Tensor):
+        inputs = []
+        targets = []
+        for idx, (input_t, target_t) in enumerate(self):
+            inputs.append(input_t)
+            targets.append(target_t)
+
+        batched_inputs = []
+        batched_targets = []
+        for i in range(len(inputs)//batch_size):
+            batched_inputs.append(torch.stack(inputs[i*batch_size: (i+1)*batch_size]))
+            batched_targets.append(torch.stack(targets[i*batch_size: (i+1)*batch_size]))
+
+        return torch.stack(batched_inputs).type(torch.float32), torch.stack(batched_targets).type(torch.float32)
+
+    def normalize_data(self, dataset: tuple[torch.Tensor, torch.Tensor]) -> (torch.Tensor, torch.Tensor):
+        inputs = (dataset[0] - dataset[0].mean([0, 1, 2], keepdim=True))
+        rng = inputs.amax([0, 1, 2], keepdim=True) - inputs.amin([0, 1, 2], keepdim=True)
+        rng = torch.where(rng > 0, rng, 1)
+        inputs = inputs / rng
+
+        return inputs, dataset[1]
+
+    def shuffle(self, dataset: tuple[torch.Tensor, torch.Tensor]) -> (torch.Tensor, torch.Tensor):
+        rand_ind = torch.randperm(dataset[0].shape[0])
+        inputs = dataset[0][rand_ind]
+        targets = dataset[1][rand_ind]
+        return inputs, targets
+
+    def drop_imu(self, dataset: tuple[torch.Tensor, torch.Tensor]) -> (torch.Tensor, torch.Tensor):
+        inputs = dataset[0][:, :, :, :5]
+        targets = dataset[1]
+        return inputs, targets
+
 
 if __name__ == '__main__':
-    fdl = FogDatasetLoader.FogDatasetLoader('./data')
+    print(pathlib.PurePath('./data/001').__str__())
+    fdl = FogDatasetLoader.FogDatasetLoader('./data/001')
     loader = DataLoader(fdl, batch_size=1, shuffle=False)
     dt = DataTransforms(loader)
-    for idx, (input_t, target_t) in enumerate(dt):
-        print(input_t, target_t)
+
+    inputs, targets = dt.load_into_memory(16)
+    print(targets)
+    print(inputs)

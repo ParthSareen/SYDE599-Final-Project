@@ -1,3 +1,5 @@
+import pathlib
+
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
@@ -35,9 +37,10 @@ class FogDatasetLoader(Dataset):
         super().__init__()
         self.data_paths = []
 
-        for subdir, _, files in os.walk(rootdir):
-            for file in files:
-                self.data_paths.append(os.path.join(subdir, file))
+        path = pathlib.Path(rootdir)
+        for file in path.rglob("*.txt"):
+            print(file.as_posix())
+            self.data_paths.append(file.as_posix())
         self.data_paths.sort()
 
     def __len__(self):
@@ -90,5 +93,4 @@ if __name__ == '__main__':
     loader = DataLoader(dataset, batch_size=1, shuffle=False)
     torch.set_printoptions(edgeitems=6)
     for batch_idx, (inputs, targets) in enumerate(loader):
-        print(inputs)
-        print(targets)
+        print(batch_idx, inputs.shape, targets.shape)
