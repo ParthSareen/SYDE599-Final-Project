@@ -116,19 +116,19 @@ def test(model, test_loader):
 
 def main():
     seq_length = 4096
-    d_model = 32
-    nhead = 2
+    d_model = 16
+    nhead = 8
     d_feed_forward = 128
-    n_encoders = 2
+    n_encoders = 1
     d_input = 33
-    num_conv_layers = 4
+    num_conv_layers = 2
     max_pool_conv = 64
-    kernel_size = 8
-    encoder_dropout = 0.5
-    max_pool_dim = 16
-    d_mlp = 64
-    n_mlp_layers = 2
-    dropout = 0.5
+    kernel_size = 6
+    encoder_dropout = 0.0350125571486418
+    max_pool_dim = 8
+    d_mlp = 16
+    n_mlp_layers = 3
+    dropout = 0.1676896702268
 
     model = Model.Model(
         seq_length,
@@ -157,10 +157,6 @@ def main():
     train_loader = dt.load_into_memory(batch_size)
     train_loader = dt.normalize_data(train_loader)
     train_loader = dt.shuffle(train_loader)
-    # train_loader = dt.drop_imu(train_loader)
-
-    print("means", train_loader[0].mean([0, 1, 2]).numpy())
-    print("std devs", train_loader[0].std([0, 1, 2]).numpy())
 
     fdl = FogDatasetLoader.FogDatasetLoader('./data/validation')
     loader = DataTransforms.DataLoader(fdl, batch_size=1, shuffle=False)
@@ -168,11 +164,8 @@ def main():
     validation_loader = dt.load_into_memory(batch_size)
     validation_loader = dt.normalize_data(validation_loader)
     validation_loader = dt.shuffle(validation_loader)
-    # validation_loader = dt.drop_imu(validation_loader)
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-5, weight_decay=1e-6, maximize=False)
-
-    # validation_loader = copy.deepcopy(train_loader)
+    optimizer = optim.Adam(model.parameters(), lr=0.000292119885582925, weight_decay=4.34380331824917E-06, maximize=False)
 
     epoch = 0
     best_test_loss = 69696969696969
@@ -180,29 +173,41 @@ def main():
     train_losses = []
     num_non_decreasing_loss = 0
     patience = 10
-    while num_non_decreasing_loss < patience and epoch < 50:
+    max_test_accuracy = 0
+    accuracies = []
+    while num_non_decreasing_loss < patience and epoch < 30:
         train_loss = train(model, train_loader, optimizer, epoch)
         train_losses.append(float(train_loss))
-        test_loss = test(model, validation_loader)
+
+        test_loss, test_accuracy = test(model, validation_loader)
         test_losses.append(test_loss.cpu())
+        accuracies.append(test_accuracy)
+
+        if test_accuracy > max_test_accuracy:
+            max_test_accuracy = test_accuracy
+            torch.save(model.state_dict(), f"saved_model")
+
         if test_loss < best_test_loss:
             best_test_loss = test_loss
             num_non_decreasing_loss = 0
-            torch.save(model.state_dict(), f"saved_model")
         else:
             num_non_decreasing_loss += 1
         epoch += 1
 
     model.load_state_dict(torch.load(f"saved_model"))
 
-    print("test_losses", test_losses)
     plt.figure()
     plt.scatter(range(len(test_losses)), test_losses)
     plt.scatter(range(len(train_losses)), train_losses)
-    plt.title("loss over epochs")
     plt.xlabel("Epoch number")
     plt.ylabel("loss")
     plt.legend(["test", "train"])
+    plt.show()
+
+    plt.figure()
+    plt.scatter(range(len(accuracies)), [x*100 for x in accuracies])
+    plt.xlabel("Epoch number")
+    plt.ylabel("Accuracy [%]")
     plt.show()
 
     preds = []
